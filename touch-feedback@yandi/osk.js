@@ -28,40 +28,54 @@ function saveState(state) {
     }
 }
 
-// Ikuti satu sentuhan/klik dari actor sampai dilepas. Sengaja tanpa
-// global.stage.grab(): grab bikin aplikasi kehilangan fokus ketik, lalu GNOME
-// langsung nurunin keyboard. Clutter sudah kasih implicit grab untuk
-// sentuhan & tombol mouse, jadi event lanjutan tetap ke actor ini.
+// Ikuti satu sentuhan/klik yang dimulai di actor sampai jari/tombol dilepas.
+// Gerakan & lepasnya dibaca di level stage (bukan dari actor), karena jari
+// sering keluar dari pegangan yang kecil; kalau "lepas" nggak ketangkep,
+// sentuhan berikutnya (nomor slot sering sama) bakal dikira masih resize.
+// Sengaja tanpa global.stage.grab(): grab bikin aplikasi kehilangan fokus
+// ketik, lalu GNOME langsung nurunin keyboard.
 function attachDrag(actor, {start, move, end}) {
-    let origin = null;
-    let seq = null;
+    const T = Clutter.EventType;
+    let drag = null; // {slot, x, y, stageId}
+
+    const finish = () => {
+        if (!drag)
+            return;
+        global.stage.disconnect(drag.stageId);
+        drag = null;
+        end();
+    };
+
     actor.connect('event', (_a, event) => {
-        const T = Clutter.EventType;
         const type = event.type();
-        const isTouch = type === T.TOUCH_BEGIN || type === T.TOUCH_UPDATE ||
-            type === T.TOUCH_END || type === T.TOUCH_CANCEL;
-        const slot = isTouch ? event.get_event_sequence()?.get_slot() ?? 0 : -1;
+        if (type !== T.TOUCH_BEGIN && type !== T.BUTTON_PRESS)
+            return Clutter.EVENT_PROPAGATE;
+        finish();
+        const touch = type === T.TOUCH_BEGIN;
+        const slot = touch ? event.get_event_sequence()?.get_slot() ?? 0 : null;
         const [x, y] = event.get_coords();
-        if (!origin && (type === T.TOUCH_BEGIN || type === T.BUTTON_PRESS)) {
-            origin = [x, y];
-            seq = slot;
-            start();
+        const stageId = global.stage.connect('captured-event', (_s, ev) => {
+            const t = ev.type();
+            const evTouch = t === T.TOUCH_UPDATE || t === T.TOUCH_END || t === T.TOUCH_CANCEL;
+            if (touch) {
+                if (!evTouch || (ev.get_event_sequence()?.get_slot() ?? 0) !== slot)
+                    return Clutter.EVENT_PROPAGATE;
+            } else if (t !== T.MOTION && t !== T.BUTTON_RELEASE) {
+                return Clutter.EVENT_PROPAGATE;
+            }
+            if (t === T.TOUCH_UPDATE || t === T.MOTION) {
+                const [cx, cy] = ev.get_coords();
+                move(cx - drag.x, cy - drag.y);
+            } else {
+                finish();
+            }
             return Clutter.EVENT_STOP;
-        }
-        if (!origin || (isTouch && slot !== seq))
-            return origin ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
-        if (type === T.TOUCH_UPDATE || type === T.MOTION) {
-            move(x - origin[0], y - origin[1]);
-            return Clutter.EVENT_STOP;
-        }
-        if (type === T.TOUCH_END || type === T.TOUCH_CANCEL || type === T.BUTTON_RELEASE) {
-            origin = null;
-            seq = null;
-            end();
-            return Clutter.EVENT_STOP;
-        }
-        return Clutter.EVENT_PROPAGATE;
+        });
+        drag = {slot, x, y, stageId};
+        start();
+        return Clutter.EVENT_STOP;
     });
+    actor.connect('destroy', finish);
 }
 
 // Keyboard layar GNOME dibikin mengambang: bisa digeser dari bar atas,
@@ -148,8 +162,10 @@ export class FloatingKeyboard {
         const kb = Main.keyboard.keyboardActor;
         if (kb) {
             kb._tfHeader?.destroy();
-            kb._tfHeader = null;
+            kb._tfFooter?.destroy();
+            kb._tfHeader = kb._tfFooter = null;
             kb.remove_style_class_name('tf-floating');
+            kb.x_align = Clutter.ActorAlign.FILL;
             kb.translation_x = 0;
             kb._relayout();
             if (kb._keyboardVisible)
@@ -198,9 +214,14 @@ export class FloatingKeyboard {
         if (kb._tfHeader)
             return;
         kb.add_style_class_name('tf-floating');
+        // Anak yang x_expand bikin keyboard ikut "expand" lalu ditarik selebar
+        // keyboardBox (selebar layar) tiap relayout, mis. waktu ngetik.
+        // Set eksplisit supaya ukuran pilihan user yang dipakai.
+        kb.x_expand = false;
+        kb.y_expand = false;
+        kb.x_align = Clutter.ActorAlign.START;
 
         const header = new St.BoxLayout({style_class: 'tf-osk-header', x_expand: true, reactive: true});
-        const gripL = new St.Widget({style_class: 'tf-osk-grip tf-osk-grip-left', reactive: true, track_hover: true});
         const handle = new St.Widget({
             style_class: 'tf-osk-handle-area', reactive: true, track_hover: true, x_expand: true,
             layout_manager: new Clutter.BinLayout(),
@@ -210,12 +231,20 @@ export class FloatingKeyboard {
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         }));
-        const gripR = new St.Widget({style_class: 'tf-osk-grip tf-osk-grip-right', reactive: true, track_hover: true});
-        header.add_child(gripL);
         header.add_child(handle);
-        header.add_child(gripR);
         kb.insert_child_at_index(header, 0);
+
+        // Pojok bawah kiri/kanan buat resize.
+        const footer = new St.BoxLayout({style_class: 'tf-osk-footer', x_expand: true});
+        const gripL = new St.Widget({style_class: 'tf-osk-grip tf-osk-grip-left', reactive: true, track_hover: true});
+        const gripR = new St.Widget({style_class: 'tf-osk-grip tf-osk-grip-right', reactive: true, track_hover: true});
+        footer.add_child(gripL);
+        footer.add_child(new St.Widget({x_expand: true}));
+        footer.add_child(gripR);
+        kb.add_child(footer);
+
         kb._tfHeader = header;
+        kb._tfFooter = footer;
 
         let start = null;
         const begin = actor => () => {
@@ -234,17 +263,27 @@ export class FloatingKeyboard {
             move: (dx, dy) => this._update({x: start.x + dx, bottom: start.bottom - dy}, kb),
             end: done(handle),
         });
+        // Tarik pojok bawah: tepi atas tetap, tepi bawah ikut jari.
+        const resizeBottom = dy => {
+            let h = Math.max(OSK.minHeight, start.h + dy);
+            let bottom = start.bottom - (h - start.h);
+            if (bottom < 0) {
+                h += bottom;
+                bottom = 0;
+            }
+            return {h, bottom};
+        };
         attachDrag(gripL, {
             start: begin(gripL),
             move: (dx, dy) => {
                 const w = Math.max(OSK.minWidth, start.w - dx);
-                this._update({w, x: start.x + start.w - w, h: start.h - dy}, kb);
+                this._update({w, x: start.x + start.w - w, ...resizeBottom(dy)}, kb);
             },
             end: done(gripL),
         });
         attachDrag(gripR, {
             start: begin(gripR),
-            move: (dx, dy) => this._update({w: start.w + dx, h: start.h - dy}, kb),
+            move: (dx, dy) => this._update({w: Math.max(OSK.minWidth, start.w + dx), ...resizeBottom(dy)}, kb),
             end: done(gripR),
         });
     }

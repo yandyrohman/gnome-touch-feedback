@@ -4,7 +4,7 @@
     background-color: rgba(36, 36, 36, 0.94);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 22px;
-    padding: 4px 10px 12px 10px;
+    padding: 4px 8px 6px 8px;
     box-shadow: 0 10px 34px 0 rgba(0, 0, 0, 0.45);
     font-family: "Ubuntu Sans", "Ubuntu", sans-serif;
 }
@@ -50,16 +50,14 @@
 }
 #keyboard.tf-floating .keyboard-key StIcon { icon-size: 1.45em; }
 
-#keyboard.tf-floating .word-suggestions { color: #e6e6e6; padding: 0 12px; min-height: 0; spacing: 6px; }
+#keyboard.tf-floating .word-suggestions { color: #e6e6e6; padding: 2px 12px 4px 12px; min-height: 0; spacing: 6px; }
 #keyboard.tf-floating .word-suggestions StButton { border-radius: 10px; }
 
 .keyboard-subkeys-boxpointer { -arrow-background-color: #2b2b2b; -arrow-border-color: rgba(255, 255, 255, 0.08); }
 
-/* Bar atas: pegangan geser + pojok resize */
-.tf-osk-header {
-    height: 26px;
-}
-.tf-osk-handle-area { min-height: 26px; }
+/* Bar atas: pegangan geser */
+.tf-osk-header { height: 22px; }
+.tf-osk-handle-area { min-height: 22px; }
 .tf-osk-handle {
     width: 64px;
     height: 5px;
@@ -69,15 +67,16 @@
 .tf-osk-handle-area:hover .tf-osk-handle { background-color: rgba(255, 255, 255, 0.45); }
 .tf-osk-handle-area:active .tf-osk-handle { background-color: #E95420; }
 
+/* Pojok bawah kiri/kanan: resize */
+.tf-osk-footer { height: 22px; margin-top: 2px; }
 .tf-osk-grip {
-    width: 16px;
-    height: 16px;
-    margin-top: 6px;
+    width: 22px;
+    height: 22px;
     border-color: rgba(255, 255, 255, 0.32);
-    border-top-width: 3px;
+    border-bottom-width: 3px;
     border-style: solid;
 }
-.tf-osk-grip-left  { border-left-width: 3px;  border-radius: 8px 0 0 0; margin-left: 4px; }
-.tf-osk-grip-right { border-right-width: 3px; border-radius: 0 8px 0 0; margin-right: 4px; }
+.tf-osk-grip-left  { border-left-width: 3px;  border-radius: 0 0 0 10px; }
+.tf-osk-grip-right { border-right-width: 3px; border-radius: 0 0 10px 0; }
 .tf-osk-grip:hover { border-color: rgba(255, 255, 255, 0.55); }
 .tf-osk-grip:active { border-color: #E95420; }

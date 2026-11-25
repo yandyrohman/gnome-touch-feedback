@@ -9,7 +9,7 @@ Extension GNOME Shell (48–50, Wayland) buat laptop layar sentuh, biar rasanya 
   - bagian **kiri / kanan** → keyboard layar naik ngikutin jari
 - **Keyboard layar mengambang** bertema Ubuntu modern (Yaru gelap + aksen oranye):
   - geser lewat bar di atas keyboard
-  - resize lewat pojok kiri atas / kanan atas
+  - resize lewat pojok kiri bawah / kanan bawah
   - posisi & ukuran disimpan di `~/.config/touch-feedback/keyboard.json`
 
 Keyboard-nya tetap keyboard bawaan GNOME (layout, emoji, dan saran kata tetap jalan). Extension ini cuma
