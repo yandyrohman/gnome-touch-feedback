@@ -28,34 +28,36 @@ function saveState(state) {
     }
 }
 
-// Ikuti satu sentuhan/klik dari actor sampai dilepas.
+// Ikuti satu sentuhan/klik dari actor sampai dilepas. Sengaja tanpa
+// global.stage.grab(): grab bikin aplikasi kehilangan fokus ketik, lalu GNOME
+// langsung nurunin keyboard. Clutter sudah kasih implicit grab untuk
+// sentuhan & tombol mouse, jadi event lanjutan tetap ke actor ini.
 function attachDrag(actor, {start, move, end}) {
-    let grab = null;
     let origin = null;
-    const finish = () => {
-        grab?.dismiss();
-        grab = null;
-        origin = null;
-        end();
-    };
+    let seq = null;
     actor.connect('event', (_a, event) => {
         const T = Clutter.EventType;
         const type = event.type();
+        const isTouch = type === T.TOUCH_BEGIN || type === T.TOUCH_UPDATE ||
+            type === T.TOUCH_END || type === T.TOUCH_CANCEL;
+        const slot = isTouch ? event.get_event_sequence()?.get_slot() ?? 0 : -1;
         const [x, y] = event.get_coords();
         if (!origin && (type === T.TOUCH_BEGIN || type === T.BUTTON_PRESS)) {
             origin = [x, y];
-            grab = global.stage.grab(actor);
+            seq = slot;
             start();
             return Clutter.EVENT_STOP;
         }
-        if (!origin)
-            return Clutter.EVENT_PROPAGATE;
+        if (!origin || (isTouch && slot !== seq))
+            return origin ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
         if (type === T.TOUCH_UPDATE || type === T.MOTION) {
             move(x - origin[0], y - origin[1]);
             return Clutter.EVENT_STOP;
         }
         if (type === T.TOUCH_END || type === T.TOUCH_CANCEL || type === T.BUTTON_RELEASE) {
-            finish();
+            origin = null;
+            seq = null;
+            end();
             return Clutter.EVENT_STOP;
         }
         return Clutter.EVENT_PROPAGATE;
@@ -99,7 +101,16 @@ export class FloatingKeyboard {
             this.emit('visibility-changed');
         });
 
+        // Selama digeser/di-resize, keyboard nggak boleh ditutup.
+        this._injections.overrideMethod(proto, 'close', original => function (...args) {
+            if (this._tfDragging)
+                return;
+            original.apply(this, args);
+        });
+
         this._injections.overrideMethod(proto, '_animateHide', () => function () {
+            if (this._tfDragging)
+                return;
             this.ease({
                 translation_y: 0,
                 opacity: 0,
@@ -209,9 +220,11 @@ export class FloatingKeyboard {
         let start = null;
         const begin = actor => () => {
             start = this._geometry();
+            kb._tfDragging = true;
             actor.add_style_pseudo_class('active');
         };
         const done = actor => () => {
+            kb._tfDragging = false;
             actor.remove_style_pseudo_class('active');
             saveState(this._state ?? this._geometry());
         };

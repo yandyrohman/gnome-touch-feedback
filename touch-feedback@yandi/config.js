@@ -11,10 +11,10 @@ export const TAP = {
 };
 
 export const BRUSH = {
-    width: 14,              // tebal kuas paling tebal (px)
+    width: 12,              // tebal kuas paling tebal (px)
     tail: 260,              // ms: seberapa panjang ekor kuas
-    color: [1, 1, 1, 0.85],         // RGBA 0..1
-    shadow: [0, 0, 0, 0.30],        // garis tepi biar kelihatan di latar terang
+    color: [1, 1, 1, 0.32],         // RGBA 0..1, alpha kecil = samar
+    shadow: [0, 0, 0, 0.10],        // garis tepi tipis biar tetap kelihatan di latar terang
 };
 
 export const SOUND = {
@@ -26,6 +26,8 @@ export const SOUND = {
 // Lebar zona tengah sebagai fraksi lebar layar.
 export const EDGES = {
     centerZone: 0.4,
+    bottomEdge: 16,         // px dari tepi bawah tempat swipe harus dimulai
+    oskOnlyByGesture: true, // false = keyboard juga muncul otomatis saat kolom teks disentuh
 };
 
 export const OSK = {

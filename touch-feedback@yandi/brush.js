@@ -8,6 +8,9 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {TAP, BRUSH, SOUND} from './config.js';
 
 const PAD = 4; // ruang ekstra di sekitar kuas
+// Kalau gesture GNOME (mis. swipe bezel) ngambil alih sentuhan, event lanjutan
+// & jari-diangkat nggak sampai ke kita. Sentuhan yang diam selama ini dianggap selesai.
+const STALE_MS = 400;
 
 // Satu goresan kuas: kanvas kecil seukuran goresan yang digambar ulang tiap frame.
 class Stroke {
@@ -23,7 +26,13 @@ class Stroke {
         this._timeline.start();
     }
 
+    get live() {
+        return this._live && !!this._area;
+    }
+
     add(x, y) {
+        if (!this._live || !this._area)
+            return;
         const now = GLib.get_monotonic_time() / 1000;
         const last = this._points.at(-1);
         if (last && Math.hypot(x - last.x, y - last.y) < 2) {
@@ -31,6 +40,10 @@ class Stroke {
             return;
         }
         this._points.push({x, y, t: now});
+    }
+
+    get lastUpdate() {
+        return this._points.at(-1)?.t ?? 0;
     }
 
     release() {
@@ -46,6 +59,8 @@ class Stroke {
 
     _tick() {
         const now = GLib.get_monotonic_time() / 1000;
+        if (this._live && now - this.lastUpdate > STALE_MS)
+            this._live = false;
         // Ekor: buang titik yang sudah lewat umurnya, sisakan yang terbaru kalau jari masih nempel.
         while (this._points.length > (this._live ? 1 : 0) && now - this._points[0].t > BRUSH.tail)
             this._points.shift();
@@ -170,9 +185,12 @@ export class TouchEffects {
     // Dipisah dari _onEvent biar bisa dites tanpa layar sentuh.
     handle(type, slot, x, y) {
         const T = Clutter.EventType;
+        const now = GLib.get_monotonic_time() / 1000;
         if (type === T.TOUCH_BEGIN) {
+            this._pruneStale(now);
             this._touches.get(slot)?.stroke?.release();
             this._touches.set(slot, {
+                last: now,
                 sx: x, sy: y, swipe: false, stroke: null,
                 onKeyboard: this._onKeyboard(x, y),
                 dot: this._spawnDot(x, y),
@@ -184,18 +202,25 @@ export class TouchEffects {
         if (!t)
             return;
 
+        t.last = now;
         if (type === T.TOUCH_UPDATE) {
             if (!t.swipe && Math.hypot(x - t.sx, y - t.sy) > TAP.swipeThreshold) {
                 t.swipe = true;
                 this._fadeOut(t.dot, 120);
                 t.dot = null;
-                if (!t.onKeyboard) {
-                    t.stroke = new Stroke(s => this._strokes?.delete(s));
-                    this._strokes.add(t.stroke);
-                    t.stroke.add(t.sx, t.sy);
-                }
             }
-            t.stroke?.add(x, y);
+            if (t.swipe && !t.onKeyboard) {
+                // Goresan baru kalau belum ada atau yang lama sudah selesai (jari sempat diam).
+                if (!t.stroke?.live) {
+                    const [px, py] = t.stroke ? [t.px, t.py] : [t.sx, t.sy];
+                    t.stroke = new Stroke(st => this._strokes?.delete(st));
+                    this._strokes.add(t.stroke);
+                    t.stroke.add(px, py);
+                }
+                t.stroke.add(x, y);
+            }
+            t.px = x;
+            t.py = y;
             return;
         }
 
@@ -209,6 +234,16 @@ export class TouchEffects {
         if (!t.swipe) {
             this._spawnRipple(x, y);
             this._play(this._tapSound);
+        }
+    }
+
+    _pruneStale(now) {
+        for (const [slot, t] of this._touches) {
+            if (now - t.last > STALE_MS) {
+                t.stroke?.release();
+                this._fadeOut(t.dot, 120);
+                this._touches.delete(slot);
+            }
         }
     }
 
