@@ -1,0 +1,7 @@
+{
+  "uuid": "touch-feedback@yandi",
+  "name": "Touch Feedback",
+  "description": "Efek sentuh ala Windows (ripple + jejak kuas + suara), swipe bezel bawah: tengah = dock, kiri/kanan = keyboard layar mengambang bertema Ubuntu.",
+  "shell-version": ["48", "49", "50"],
+  "url": "https://github.com/yandyrohman/gnome-touch-feedback"
+}
